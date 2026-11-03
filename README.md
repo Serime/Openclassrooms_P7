@@ -153,6 +153,32 @@ node dist/index.js
 
 The front-end archive contains static files to serve with any web server that proxies `/api` to the back-end (see `client/nginx.conf`).
 
+## Monitoring with ELK
+
+A separate Compose file runs Elasticsearch, Logstash, Kibana (8.19) and Filebeat on a developer machine. It is not part of the CI/CD pipeline. Allow about 4 GB of memory for Docker.
+
+```bash
+docker compose up -d
+docker compose -f docker-compose-elk.yml up -d
+```
+
+- Kibana: `http://localhost:5601`, dashboard **Orion CRM - Supervision** (imported automatically by the `kibana-setup` service)
+- Elasticsearch: `http://localhost:9200`, indices `orion-logs-YYYY.MM.DD`
+- Both ports are bound to `127.0.0.1` only; security is disabled for local use.
+
+How logs flow:
+
+1. The back-end writes one JSON line per event with Winston (`http_request` with method, path, status and duration; `unhandled_error`; `client_log` for errors reported by the browser through `POST /api/client-logs`).
+2. nginx writes its access log as JSON (status, path, request time).
+3. Filebeat reads the Docker logs of the `orion-crm` containers and sends them to Logstash.
+4. Logstash parses the JSON, normalises the fields (`service`, `log.level`, `event.action`, `http.*`) and indexes them in Elasticsearch.
+
+```bash
+docker compose -f docker-compose-elk.yml ps
+docker compose -f docker-compose-elk.yml down
+docker compose -f docker-compose-elk.yml down -v
+```
+
 ## Running the Application
 
 ### Start the backend server
