@@ -1,0 +1,200 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    name: Back-end (Node ${{ matrix.node }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ${{ fromJSON(github.event_name == 'schedule' && '["22", "24"]' || '["22"]') }}
+    defaults:
+      run:
+        working-directory: server
+    env:
+      DATABASE_URL: file:./ci.db
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Générer le client Prisma
+        run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Tests et couverture
+        run: npx vitest run --coverage
+
+      - name: Résumé de la couverture
+        if: always() && hashFiles('server/coverage/coverage-summary.json') != ''
+        run: |
+          node -e "
+          const t = require('./coverage/coverage-summary.json').total;
+          const cols = ['lines', 'statements', 'functions', 'branches'];
+          console.log('### Couverture back-end (Node ${{ matrix.node }})\n');
+          console.log('| Lignes | Instructions | Fonctions | Branches |');
+          console.log('|---|---|---|---|');
+          console.log('| ' + cols.map((k) => t[k].pct + ' % (' + t[k].covered + '/' + t[k].total + ')').join(' | ') + ' |');
+          " >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publier le rapport de couverture
+        if: always() && matrix.node == '22'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: server-coverage
+          path: server/coverage/
+          retention-days: 14
+          if-no-files-found: error
+
+  client:
+    name: Front-end (Node ${{ matrix.node }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ${{ fromJSON(github.event_name == 'schedule' && '["22", "24"]' || '["22"]') }}
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Vérification des types
+        run: npm run typecheck
+
+      - name: Tests et couverture
+        run: npx vitest run --coverage
+
+      - name: Résumé de la couverture
+        if: always() && hashFiles('client/coverage/coverage-summary.json') != ''
+        run: |
+          node -e "
+          const t = require('./coverage/coverage-summary.json').total;
+          const cols = ['lines', 'statements', 'functions', 'branches'];
+          console.log('### Couverture front-end (Node ${{ matrix.node }})\n');
+          console.log('| Lignes | Instructions | Fonctions | Branches |');
+          console.log('|---|---|---|---|');
+          console.log('| ' + cols.map((k) => t[k].pct + ' % (' + t[k].covered + '/' + t[k].total + ')').join(' | ') + ' |');
+          " >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build Vite
+        run: npm run build
+
+      - name: Publier le rapport de couverture
+        if: always() && matrix.node == '22'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: client-coverage
+          path: client/coverage/
+          retention-days: 14
+          if-no-files-found: error
+
+  audit:
+    name: Audit des dépendances (${{ matrix.app }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [server, client]
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      - name: Vulnérabilités hautes et critiques des dépendances de production
+        run: npm audit --omit=dev --audit-level=high
+
+  sonarqube:
+    name: Analyse SonarQube Cloud
+    needs: [server, client]
+    if: >-
+      (github.event_name != 'push' || github.ref == 'refs/heads/main') &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: server-coverage
+          path: server/coverage
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: client-coverage
+          path: client/coverage
+
+      - name: Rattacher la couverture aux chemins du dépôt
+        run: |
+          sed -i 's#^SF:#SF:server/#' server/coverage/lcov.info
+          sed -i 's#^SF:#SF:client/#' client/coverage/lcov.info
+
+      - name: Analyse et quality gate
+        uses: SonarSource/sonarqube-scan-action@4d1dc0c91ee400dcf8a6dddf2f705ac36542e304 # v8.4.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
