@@ -87,6 +87,44 @@ docker compose down -v
 
 `docker compose down -v` also deletes the database volume.
 
+## CI/CD pipeline
+
+All automation lives in `.github/workflows/ci.yml`.
+
+| Job | Runs on | What it does |
+|---|---|---|
+| Back-end | every run (Node 22, plus Node 24 nightly) | `npm ci`, `prisma generate`, lint, `tsc` build, Vitest with coverage |
+| Front-end | every run (Node 22, plus Node 24 nightly) | `npm ci`, lint, type check, Vitest with coverage, Vite build |
+| Dependency audit | every run | `npm audit --omit=dev --audit-level=high` for each app |
+| SonarQube Cloud | pull requests, `main`, release tags, nightly | static analysis and quality gate |
+| Docker images and smoke test | every run | builds both images, starts the stack, runs `scripts/smoke-test.sh`, checks data persistence; Grype image scan nightly |
+| Image publication | push to `main` or `v*.*.*` tag | pushes `ghcr.io/serime/orion-crm-{server,client}:sha-<commit>` |
+| Validation deployment | after publication | pulls the published images, starts them, runs the smoke test, then promotes the tags (`main` and `latest`, or `X.Y.Z` and `X.Y` for a release) |
+
+Triggers: push on any branch, pull request to `main`, release tag `vX.Y.Z`, nightly at 02:00 UTC, manual run (`gh workflow run CI`).
+
+Secrets and variables: `SONAR_TOKEN` (repository secret), `SONAR_ORGANIZATION` and `SONAR_PROJECT_KEY` (repository variables). Image publication uses the built-in `GITHUB_TOKEN`.
+
+## Deployment
+
+Published images are public on GitHub Container Registry. To deploy or update a machine, choose a tag (`latest`, `sha-<commit>` or a release `X.Y.Z`):
+
+```bash
+export TAG=latest
+docker compose pull
+docker compose up -d --no-build --wait
+sh scripts/smoke-test.sh
+```
+
+Rollback: run the same commands with the tag of the last stable version, for example `TAG=sha-3241247`. The database volume is kept across deployments; migrations are applied automatically at start-up.
+
+Release: tag a commit of `main` and push the tag. The pipeline publishes and validates the images, then adds the `X.Y.Z` and `X.Y` tags.
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
 ## Running the Application
 
 ### Start the backend server
