@@ -158,6 +158,51 @@ jobs:
       - name: Vulnérabilités hautes et critiques des dépendances de production
         run: npm audit --omit=dev --audit-level=high
 
+  docker:
+    name: Images Docker et smoke test
+    needs: [server, client]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Construire les images
+        run: docker compose build
+
+      - name: Démarrer la pile
+        run: docker compose up -d --wait --wait-timeout 120
+
+      - name: Smoke test
+        run: |
+          curl -fsS http://localhost:4200/api/health
+          curl -fsS -o /dev/null http://localhost:4200/
+          curl -fsS -o /dev/null http://localhost:4200/contacts
+          curl -fsS -o /dev/null -X POST http://localhost:4200/api/organizations \
+            -H 'Content-Type: application/json' -d '{"name":"Smoke test"}'
+          test "$(curl -fsS http://localhost:4200/api/organizations/stats)" = '{"total":1}'
+          docker compose restart server
+          docker compose up -d --wait --wait-timeout 60
+          test "$(curl -fsS http://localhost:4200/api/organizations/stats)" = '{"total":1}'
+
+      - name: Scan des vulnérabilités des images
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          for app in server client; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+              anchore/grype@sha256:621d56d1d68106b787022c81546f7e0a36202a25d1239f0c20195fab8c16f7ea \
+              "ghcr.io/serime/orion-crm-${app}:latest" --fail-on high
+          done
+
+      - name: Journaux des conteneurs
+        if: failure()
+        run: docker compose logs
+
+      - name: Arrêter la pile
+        if: always()
+        run: docker compose down -v
+
   sonarqube:
     name: Analyse SonarQube Cloud
     needs: [server, client]
