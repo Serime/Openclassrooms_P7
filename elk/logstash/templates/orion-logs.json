@@ -1,0 +1,61 @@
+{
+  "index_patterns": ["orion-logs-*"],
+  "priority": 200,
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    },
+    "mappings": {
+      "dynamic_templates": [
+        {
+          "strings_as_keyword": {
+            "match_mapping_type": "string",
+            "mapping": { "type": "keyword", "ignore_above": 1024 }
+          }
+        }
+      ],
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "message": { "type": "text" },
+        "service": { "type": "keyword" },
+        "origin": { "type": "keyword" },
+        "log": {
+          "properties": {
+            "level": { "type": "keyword" }
+          }
+        },
+        "event": {
+          "properties": {
+            "action": { "type": "keyword" }
+          }
+        },
+        "http": {
+          "properties": {
+            "method": { "type": "keyword" },
+            "path": { "type": "keyword" },
+            "status_code": { "type": "integer" },
+            "duration_ms": { "type": "float" },
+            "response_bytes": { "type": "long" },
+            "user_agent": { "type": "keyword" }
+          }
+        },
+        "browser": {
+          "properties": {
+            "message": { "type": "text" },
+            "stack": { "type": "text" },
+            "page": { "type": "keyword" },
+            "source": { "type": "keyword" }
+          }
+        },
+        "app_error": {
+          "properties": {
+            "message": { "type": "text" },
+            "stack": { "type": "text" },
+            "name": { "type": "keyword" }
+          }
+        }
+      }
+    }
+  }
+}
