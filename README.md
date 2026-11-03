@@ -58,6 +58,35 @@ npm install
 cp .env.example .env
 ```
 
+## Running with Docker Compose
+
+Requirements: Docker Engine 24+ with the Compose plugin (or Docker Desktop).
+
+```bash
+docker compose up -d --build
+```
+
+- Application: `http://localhost:4200` (nginx serves the front-end and proxies `/api` to the back-end)
+- Health check: `http://localhost:4200/api/health`
+- The back-end port is not published on the host; it is only reachable through nginx.
+- Data is stored in the `orion-crm_db-data` volume and survives `docker compose down`. Prisma migrations are applied automatically when the back-end starts.
+
+Useful variables (in the shell or a `.env` file next to `docker-compose.yml`):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TAG` | `latest` | image tag to build or run |
+| `CLIENT_PORT` | `4200` | host port of the application |
+
+```bash
+docker compose ps
+docker compose logs -f server
+docker compose down
+docker compose down -v
+```
+
+`docker compose down -v` also deletes the database volume.
+
 ## Running the Application
 
 ### Start the backend server
