@@ -5,11 +5,17 @@ import contactRoutes from './routes/contactRoutes';
 import clientLogRoutes from './routes/clientLogRoutes';
 import { requestLogger } from './middlewares/requestLogger';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler';
+import { parseCorsOrigins } from './corsOrigins';
 
 export const app: Application = express();
 
+const allowedOrigins = parseCorsOrigins(process.env.CORS_ORIGIN);
+
+app.disable('x-powered-by');
 app.use(requestLogger);
-app.use(cors());
+if (allowedOrigins.length > 0) {
+  app.use(cors({ origin: allowedOrigins }));
+}
 app.use(express.json());
 
 app.get('/api/health', (_req: Request, res: Response) => {

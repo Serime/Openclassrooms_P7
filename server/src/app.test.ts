@@ -15,6 +15,13 @@ describe('app', () => {
     expect(res.body.status).toBe('OK');
   });
 
+  it('hides the framework and allows no cross-origin call by default', async () => {
+    const res = await request(app).get('/api/health').set('Origin', 'https://attacker.example');
+
+    expect(res.headers['x-powered-by']).toBeUndefined();
+    expect(res.headers['access-control-allow-origin']).toBeUndefined();
+  });
+
   it('answers 404 on unknown routes and logs the request as a warning', async () => {
     const log = vi.spyOn(logger, 'log');
 
