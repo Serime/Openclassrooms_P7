@@ -285,3 +285,67 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.app }}
           cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+
+  deploy:
+    name: Déploiement de validation
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Version à déployer
+        run: echo "TAG=sha-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Récupérer les images publiées
+        run: docker compose pull
+
+      - name: Démarrer la version publiée
+        run: docker compose up -d --no-build --wait --wait-timeout 120
+
+      - name: Smoke test
+        run: sh scripts/smoke-test.sh
+
+      - name: Promouvoir la version validée
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+            tags="$version ${version%.*}"
+          else
+            tags="main latest"
+          fi
+          for app in server client; do
+            for tag in $tags; do
+              docker buildx imagetools create \
+                -t "ghcr.io/serime/orion-crm-${app}:${tag}" \
+                "ghcr.io/serime/orion-crm-${app}:${TAG}"
+            done
+          done
+          {
+            echo "### Version déployée : \`${TAG}\`"
+            echo
+            echo "Tags promus : \`${tags}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Journaux des conteneurs
+        if: failure()
+        run: docker compose logs
+
+      - name: Arrêter la pile
+        if: always()
+        run: docker compose down -v
