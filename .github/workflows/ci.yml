@@ -325,7 +325,10 @@ jobs:
         run: |
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             version="${GITHUB_REF_NAME#v}"
-            tags="$version ${version%.*}"
+            case "$version" in
+              *-*) tags="$version" ;;
+              *) tags="$version ${version%.*}" ;;
+            esac
           else
             tags="main latest"
           fi
