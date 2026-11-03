@@ -4,7 +4,7 @@ import { z } from 'zod';
 export const CreateOrganizationSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   industry: z.string().optional(),
-  website: z.string().url().optional().or(z.literal('')),
+  website: z.url().optional().or(z.literal('')),
   description: z.string().optional(),
 });
 
