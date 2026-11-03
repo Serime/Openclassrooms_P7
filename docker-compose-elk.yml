@@ -32,7 +32,9 @@ services:
       XPACK_MONITORING_ENABLED: "false"
     mem_limit: 1g
     volumes:
+      - ./elk/logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
       - ./elk/logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - ./elk/logstash/pipeline-metrics:/usr/share/logstash/pipeline-metrics:ro
       - ./elk/logstash/templates:/usr/share/logstash/templates:ro
     networks:
       - elk

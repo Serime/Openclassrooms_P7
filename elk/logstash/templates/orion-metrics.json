@@ -1,0 +1,45 @@
+{
+  "index_patterns": ["orion-pipeline-*", "orion-quality-*"],
+  "priority": 200,
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    },
+    "mappings": {
+      "dynamic_templates": [
+        {
+          "strings_as_keyword": {
+            "match_mapping_type": "string",
+            "mapping": { "type": "keyword", "ignore_above": 1024 }
+          }
+        }
+      ],
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "run": {
+          "properties": {
+            "duration_s": { "type": "integer" },
+            "lead_time_min": { "type": "float" },
+            "attempt": { "type": "integer" },
+            "dependabot": { "type": "boolean" },
+            "delivery": { "type": "boolean" }
+          }
+        },
+        "quality": {
+          "properties": {
+            "coverage": { "type": "float" },
+            "vulnerabilities": { "type": "float" },
+            "bugs": { "type": "float" },
+            "code_smells": { "type": "float" },
+            "security_rating": { "type": "float" },
+            "reliability_rating": { "type": "float" },
+            "sqale_index": { "type": "float" },
+            "ncloc": { "type": "float" },
+            "duplicated_lines_density": { "type": "float" }
+          }
+        }
+      }
+    }
+  }
+}
