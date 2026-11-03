@@ -118,12 +118,40 @@ sh scripts/smoke-test.sh
 
 Rollback: run the same commands with the tag of the last stable version, for example `TAG=sha-3241247`. The database volume is kept across deployments; migrations are applied automatically at start-up.
 
-Release: tag a commit of `main` and push the tag. The pipeline publishes and validates the images, then adds the `X.Y.Z` and `X.Y` tags.
+## Releases
+
+Versioning follows [SemVer](https://semver.org): `vMAJOR.MINOR.PATCH`, with optional release candidates `vMAJOR.MINOR.PATCH-rc.N`. Releases are cut from `main` only; there are no release branches.
+
+Creating a release is the only manual step: tag a commit of `main` and push the tag.
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag -a v1.1.0-rc.1 -m "Orion CRM 1.1.0-rc.1"
+git push origin v1.1.0-rc.1
 ```
+
+`.github/workflows/release.yml` then:
+
+1. checks the tag format and that the tagged commit belongs to `main`;
+2. runs the tests and builds both applications;
+3. packages `orion-crm-server-vX.Y.Z.tar.gz` (compiled back-end, Prisma schema and migrations) and `orion-crm-client-vX.Y.Z.tar.gz` (static front-end), with `SHA256SUMS.txt`, and rejects archives containing `.env` files, databases, source maps or `node_modules`;
+4. starts the application from the archives on a clean runner;
+5. publishes the GitHub release with notes generated from the commit messages (a release candidate is marked as pre-release).
+
+The same tag makes `ci.yml` publish the Docker images `X.Y.Z` and `X.Y` (only `X.Y.Z-rc.N` for a release candidate).
+
+Running the back-end from a release archive (Node.js 22):
+
+```bash
+tar -xzf orion-crm-server-vX.Y.Z.tar.gz
+cd orion-crm-server-X.Y.Z
+npm ci --omit=dev
+npx prisma generate
+cp .env.example .env
+npx prisma migrate deploy
+node dist/index.js
+```
+
+The front-end archive contains static files to serve with any web server that proxies `/api` to the back-end (see `client/nginx.conf`).
 
 ## Running the Application
 
