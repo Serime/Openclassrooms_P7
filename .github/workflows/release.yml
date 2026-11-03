@@ -1,0 +1,235 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build des artefacts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Vérifier le tag
+        id: version
+        run: |
+          semver='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.(0|[1-9][0-9]*))?$'
+          if ! printf '%s' "$GITHUB_REF_NAME" | grep -Eq "$semver"; then
+            echo "::error::Le tag $GITHUB_REF_NAME ne respecte pas le format vMAJEUR.MINEUR.CORRECTIF ou vMAJEUR.MINEUR.CORRECTIF-rc.N"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Le tag $GITHUB_REF_NAME doit pointer sur un commit de la branche main"
+            exit 1
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          case "$version" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            server/package-lock.json
+            client/package-lock.json
+
+      - name: Tester et compiler le back-end
+        working-directory: server
+        run: |
+          npm ci
+          npx prisma generate
+          npx vitest run
+          npm run build
+
+      - name: Tester et construire le front-end
+        working-directory: client
+        run: |
+          npm ci
+          npm run typecheck
+          npx vitest run
+          npm run build
+          find dist -name '*.map' -delete
+
+      - name: Assembler les archives
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          server_dir="staging/orion-crm-server-$VERSION"
+          client_dir="staging/orion-crm-client-$VERSION"
+          mkdir -p "$server_dir" "$client_dir" release
+          cp -r server/dist server/prisma server/package.json server/package-lock.json server/.env.example "$server_dir"/
+          find "$server_dir" -name '*.map' -delete
+          (cd "$server_dir" && npm version "$VERSION" --no-git-tag-version --allow-same-version > /dev/null)
+          cp -r client/dist/. "$client_dir"/
+          tar -C staging -czf "release/orion-crm-server-v$VERSION.tar.gz" "orion-crm-server-$VERSION"
+          tar -C staging -czf "release/orion-crm-client-v$VERSION.tar.gz" "orion-crm-client-$VERSION"
+          (cd release && sha256sum *.tar.gz > SHA256SUMS.txt)
+
+      - name: Contrôler le contenu des archives
+        run: |
+          for archive in release/*.tar.gz; do
+            echo "== $archive"
+            tar -tzf "$archive" | tee contents.txt
+            if grep -Eq '(^|/)\.env$|\.db$|\.db-journal$|\.map$|node_modules/|\.test\.' contents.txt; then
+              echo "::error::Fichier interdit dans $archive"
+              exit 1
+            fi
+          done
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: release-files
+          path: release/
+          retention-days: 7
+          if-no-files-found: error
+
+  verify:
+    name: Lancement depuis les artefacts
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: release-files
+          path: release
+
+      - name: Vérifier les sommes de contrôle
+        working-directory: release
+        run: sha256sum -c SHA256SUMS.txt
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+
+      - name: Démarrer le back-end depuis son archive
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          mkdir -p run
+          tar -xzf "release/orion-crm-server-v$VERSION.tar.gz" -C run
+          cd "run/orion-crm-server-$VERSION"
+          test "$(node -p "require('./package.json').version")" = "$VERSION"
+          npm ci --omit=dev
+          npx prisma generate
+          export DATABASE_URL="file:$PWD/release-check.db" PORT=8080
+          npx prisma migrate deploy
+          node dist/index.js > server.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            curl -fsS http://localhost:8080/api/health && break
+            sleep 1
+          done
+          curl -fsS -o /dev/null -X POST http://localhost:8080/api/organizations \
+            -H 'Content-Type: application/json' -d '{"name":"Release check"}'
+          test "$(curl -fsS http://localhost:8080/api/organizations/stats)" = '{"total":1}'
+
+      - name: Servir le front-end depuis son archive
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          mkdir -p web
+          tar -xzf "release/orion-crm-client-v$VERSION.tar.gz" -C web
+          cd "web/orion-crm-client-$VERSION"
+          python3 -m http.server 4300 > /dev/null 2>&1 &
+          sleep 2
+          curl -fsS http://localhost:4300/ -o /tmp/index.html
+          grep -q '<div id="root"></div>' /tmp/index.html
+          for asset in $(grep -oE '/assets/[^"]+' /tmp/index.html); do
+            curl -fsS -o /dev/null "http://localhost:4300$asset"
+            echo "OK $asset"
+          done
+
+  release:
+    name: Publication de la release GitHub
+    needs: [build, verify]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: release-files
+          path: release
+
+      - name: Rédiger les notes de version
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+        run: |
+          if [ "$PRERELEASE" = "true" ]; then
+            previous=$(git describe --tags --abbrev=0 --match 'v*' "${GITHUB_SHA}^" 2>/dev/null || true)
+          else
+            previous=$(git describe --tags --abbrev=0 --match 'v*' --exclude '*-*' "${GITHUB_SHA}^" 2>/dev/null || true)
+          fi
+          range="${previous:+$previous..}$GITHUB_SHA"
+          section() {
+            lines=$(git log --no-merges --format='- %s (%h)' "$range" | grep -E "$2" || true)
+            if [ -n "$lines" ]; then
+              printf '### %s\n\n%s\n\n' "$1" "$lines"
+            fi
+          }
+          {
+            echo "## Orion CRM $VERSION"
+            echo
+            if [ -n "$previous" ]; then
+              echo "Changements depuis $previous."
+            else
+              echo "Première version publiée."
+            fi
+            echo
+            section "Nouveautés" '^- feat'
+            section "Corrections" '^- fix'
+            section "Maintenance" '^- (chore|refactor|style|docs|test)'
+            echo "### Installation"
+            echo
+            echo "Images Docker : \`ghcr.io/serime/orion-crm-server:$VERSION\` et \`ghcr.io/serime/orion-crm-client:$VERSION\` :"
+            echo
+            echo '```bash'
+            echo "TAG=$VERSION docker compose pull"
+            echo "TAG=$VERSION docker compose up -d --no-build --wait"
+            echo '```'
+            echo
+            echo "Archives : \`orion-crm-server-v$VERSION.tar.gz\` (back-end compilé, schéma et migrations Prisma) et \`orion-crm-client-v$VERSION.tar.gz\` (front-end statique). Sommes de contrôle dans \`SHA256SUMS.txt\`."
+          } > notes.md
+          cat notes.md
+
+      - name: Créer la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+        run: |
+          if [ "$PRERELEASE" = "true" ]; then
+            kind="--prerelease"
+          else
+            kind="--latest"
+          fi
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --title "Orion CRM $GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            --verify-tag \
+            "$kind"
