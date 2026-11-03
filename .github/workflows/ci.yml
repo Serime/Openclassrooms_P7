@@ -175,10 +175,10 @@ jobs:
         run: docker compose up -d --wait --wait-timeout 120
 
       - name: Smoke test
+        run: sh scripts/smoke-test.sh
+
+      - name: Écriture et persistance des données
         run: |
-          curl -fsS http://localhost:4200/api/health
-          curl -fsS -o /dev/null http://localhost:4200/
-          curl -fsS -o /dev/null http://localhost:4200/contacts
           curl -fsS -o /dev/null -X POST http://localhost:4200/api/organizations \
             -H 'Content-Type: application/json' -d '{"name":"Smoke test"}'
           test "$(curl -fsS http://localhost:4200/api/organizations/stats)" = '{"total":1}'
