@@ -45,6 +45,8 @@ services:
     environment:
       ELASTICSEARCH_HOSTS: http://elasticsearch:9200
       TELEMETRY_OPTIN: "false"
+      TELEMETRY_ALLOWCHANGINGOPTINSTATUS: "false"
+      XPACK_SECURITY_SHOWINSECURECLUSTERWARNING: "false"
       I18N_LOCALE: fr-FR
     mem_limit: 1g
     ports:
