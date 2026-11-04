@@ -4,17 +4,17 @@ WORKDIR /app
 
 FROM base AS build
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 COPY tsconfig.json ./
 COPY prisma ./prisma
 COPY src ./src
-RUN npx prisma generate && npm run build
+RUN npm run prisma:generate && npm run build
 
 FROM base AS prod-deps
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
-RUN npm ci --omit=dev \
- && npx prisma generate \
+RUN npm ci --omit=dev --ignore-scripts \
+ && npm run prisma:generate \
  && npm cache clean --force
 
 FROM base AS runtime
