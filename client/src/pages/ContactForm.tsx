@@ -86,11 +86,12 @@ export default function ContactForm() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="contact-firstName" className="block text-sm font-medium text-gray-700 mb-1">
                 First Name <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
+                id="contact-firstName"
                 name="firstName"
                 value={form.firstName}
                 onChange={handleChange}
@@ -99,11 +100,12 @@ export default function ContactForm() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="contact-lastName" className="block text-sm font-medium text-gray-700 mb-1">
                 Last Name <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
+                id="contact-lastName"
                 name="lastName"
                 value={form.lastName}
                 onChange={handleChange}
@@ -114,11 +116,12 @@ export default function ContactForm() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="contact-email" className="block text-sm font-medium text-gray-700 mb-1">
               Email <span className="text-red-500">*</span>
             </label>
             <input
               type="email"
+              id="contact-email"
               name="email"
               value={form.email}
               onChange={handleChange}
@@ -128,9 +131,10 @@ export default function ContactForm() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+            <label htmlFor="contact-phone" className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
             <input
               type="tel"
+              id="contact-phone"
               name="phone"
               value={form.phone}
               onChange={handleChange}
@@ -139,9 +143,10 @@ export default function ContactForm() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Position</label>
+            <label htmlFor="contact-position" className="block text-sm font-medium text-gray-700 mb-1">Position</label>
             <input
               type="text"
+              id="contact-position"
               name="position"
               value={form.position}
               onChange={handleChange}
@@ -150,8 +155,9 @@ export default function ContactForm() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Organization</label>
+            <label htmlFor="contact-organizationId" className="block text-sm font-medium text-gray-700 mb-1">Organization</label>
             <select
+              id="contact-organizationId"
               name="organizationId"
               value={form.organizationId}
               onChange={handleChange}

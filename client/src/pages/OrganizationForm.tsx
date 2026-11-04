@@ -77,11 +77,12 @@ export default function OrganizationForm() {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="organization-name" className="block text-sm font-medium text-gray-700 mb-1">
               Name <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
+              id="organization-name"
               name="name"
               value={form.name}
               onChange={handleChange}
@@ -91,9 +92,10 @@ export default function OrganizationForm() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Industry</label>
+            <label htmlFor="organization-industry" className="block text-sm font-medium text-gray-700 mb-1">Industry</label>
             <input
               type="text"
+              id="organization-industry"
               name="industry"
               value={form.industry}
               onChange={handleChange}
@@ -102,9 +104,10 @@ export default function OrganizationForm() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
+            <label htmlFor="organization-website" className="block text-sm font-medium text-gray-700 mb-1">Website</label>
             <input
               type="url"
+              id="organization-website"
               name="website"
               value={form.website}
               onChange={handleChange}
@@ -113,8 +116,9 @@ export default function OrganizationForm() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <label htmlFor="organization-description" className="block text-sm font-medium text-gray-700 mb-1">Description</label>
             <textarea
+              id="organization-description"
               name="description"
               value={form.description}
               onChange={handleChange}
