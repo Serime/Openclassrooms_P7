@@ -162,7 +162,7 @@ docker compose up -d
 docker compose -f docker-compose-elk.yml up -d
 ```
 
-- Kibana: `http://localhost:5601`, dashboard **Orion CRM - Supervision** (imported automatically by the `kibana-setup` service)
+- Kibana: `http://localhost:5601`, dashboards **Orion CRM - Supervision** (application logs) and **Orion CRM - Pipeline et DORA** (DORA metrics and pipeline KPIs), imported automatically by the `kibana-setup` service
 - Elasticsearch: `http://localhost:9200`, indices `orion-logs-YYYY.MM.DD`
 - Both ports are bound to `127.0.0.1` only; security is disabled for local use.
 
@@ -172,6 +172,7 @@ How logs flow:
 2. nginx writes its access log as JSON (status, path, request time).
 3. Filebeat reads the Docker logs of the `orion-crm` containers and sends them to Logstash.
 4. Logstash parses the JSON, normalises the fields (`service`, `log.level`, `event.action`, `http.*`) and indexes them in Elasticsearch.
+5. A second Logstash pipeline polls the public GitHub API (workflow runs every 5 minutes, deployments) and SonarQube Cloud (every 30 minutes) to index pipeline durations, results, lead time, deployments and quality measures.
 
 ```bash
 docker compose -f docker-compose-elk.yml ps
