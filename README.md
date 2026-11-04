@@ -97,7 +97,7 @@ All automation lives in `.github/workflows/ci.yml`.
 | Front-end | every run (Node 22, plus Node 24 nightly) | `npm ci`, lint, type check, Vitest with coverage, Vite build |
 | Dependency audit | every run | `npm audit --omit=dev --audit-level=high` for each app |
 | SonarQube Cloud | pull requests, `main`, release tags, nightly | static analysis and quality gate |
-| Docker images and smoke test | every run | builds both images, starts the stack, runs `scripts/smoke-test.sh`, checks data persistence; Grype image scan nightly |
+| Docker images and smoke test | every run | builds both images, starts the stack, runs `scripts/smoke-test.sh`, checks data persistence, backup and restore; Grype image scan nightly |
 | Image publication | push to `main` or `v*.*.*` tag | pushes `ghcr.io/serime/orion-crm-{server,client}:sha-<commit>` |
 | Validation deployment | after publication | pulls the published images, starts them, runs the smoke test, then promotes the tags (`main` and `latest`, or `X.Y.Z` and `X.Y` for a release) |
 
@@ -116,7 +116,26 @@ docker compose up -d --no-build --wait
 sh scripts/smoke-test.sh
 ```
 
-Rollback: run the same commands with the tag of the last stable version, for example `TAG=sha-3241247`. The database volume is kept across deployments; migrations are applied automatically at start-up.
+Order: back up the database, pull the images, start the stack (the back-end applies the migrations and must be healthy before nginx starts), run the smoke test.
+
+Rollback: run the same commands with the tag of the last stable version, for example `TAG=sha-3241247`. The database volume is kept across deployments; migrations are applied automatically at start-up. Going back before a migration requires restoring the backup taken before the deployment.
+
+## Backup and restore
+
+The only data to protect is the SQLite database in the `db-data` volume. `scripts/backup-db.sh` takes a consistent copy while the application is running (`VACUUM INTO`), stores it in `./backups/orion-<UTC timestamp>.db` and keeps the 14 most recent files (`BACKUP_DIR` and `KEEP` override these defaults). The `backups/` folder is ignored by git.
+
+```bash
+sh scripts/backup-db.sh
+sh scripts/restore-db.sh backups/orion-20261104T092929Z.db
+```
+
+`restore-db.sh` checks the file, stops the stack, replaces the database and restarts the stack; migrations bring an older backup up to the current schema. Run the backup daily and before every deployment, for example with cron on the target machine:
+
+```bash
+0 2 * * * cd /opt/orion-crm && sh scripts/backup-db.sh >> /var/log/orion-backup.log 2>&1
+```
+
+Copy `backups/` to another disk or storage regularly. The CI job "Images Docker et smoke test" runs a backup, deletes the volume, restores it and checks the data on every run.
 
 ## Releases
 
@@ -144,10 +163,10 @@ Running the back-end from a release archive (Node.js 22):
 ```bash
 tar -xzf orion-crm-server-vX.Y.Z.tar.gz
 cd orion-crm-server-X.Y.Z
-npm ci --omit=dev
-npx prisma generate
+npm ci --omit=dev --ignore-scripts
+npm run prisma:generate
 cp .env.example .env
-npx prisma migrate deploy
+npm run prisma:deploy
 node dist/index.js
 ```
 
