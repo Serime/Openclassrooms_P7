@@ -55,17 +55,17 @@ jobs:
       - name: Tester et compiler le back-end
         working-directory: server
         run: |
-          npm ci
-          npx prisma generate
-          npx vitest run
+          npm ci --ignore-scripts
+          npm run prisma:generate
+          npm test
           npm run build
 
       - name: Tester et construire le front-end
         working-directory: client
         run: |
-          npm ci
+          npm ci --ignore-scripts
           npm run typecheck
-          npx vitest run
+          npm test
           npm run build
           find dist -name '*.map' -delete
 
@@ -129,10 +129,10 @@ jobs:
           tar -xzf "release/orion-crm-server-v$VERSION.tar.gz" -C run
           cd "run/orion-crm-server-$VERSION"
           test "$(node -p "require('./package.json').version")" = "$VERSION"
-          npm ci --omit=dev
-          npx prisma generate
+          npm ci --omit=dev --ignore-scripts
+          npm run prisma:generate
           export DATABASE_URL="file:$PWD/release-check.db" PORT=8080
-          npx prisma migrate deploy
+          npm run prisma:deploy
           node dist/index.js > server.log 2>&1 &
           for attempt in $(seq 1 30); do
             curl -fsS http://localhost:8080/api/health && break

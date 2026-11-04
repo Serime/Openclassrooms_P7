@@ -43,10 +43,10 @@ jobs:
           cache-dependency-path: server/package-lock.json
 
       - name: Installer les dépendances
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Générer le client Prisma
-        run: npx prisma generate
+        run: npm run prisma:generate
 
       - name: Lint
         run: npm run lint
@@ -55,7 +55,7 @@ jobs:
         run: npm run build
 
       - name: Tests et couverture
-        run: npx vitest run --coverage
+        run: npm run test:coverage
 
       - name: Résumé de la couverture
         if: always() && hashFiles('server/coverage/coverage-summary.json') != ''
@@ -101,7 +101,7 @@ jobs:
           cache-dependency-path: client/package-lock.json
 
       - name: Installer les dépendances
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Lint
         run: npm run lint
@@ -110,7 +110,7 @@ jobs:
         run: npm run typecheck
 
       - name: Tests et couverture
-        run: npx vitest run --coverage
+        run: npm run test:coverage
 
       - name: Résumé de la couverture
         if: always() && hashFiles('client/coverage/coverage-summary.json') != ''
