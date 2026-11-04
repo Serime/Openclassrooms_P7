@@ -187,6 +187,16 @@ jobs:
           docker compose up -d --wait --wait-timeout 60
           test "$(curl -fsS http://localhost:4200/api/organizations/stats)" = '{"total":1}'
 
+      - name: Sauvegarde et restauration de la base
+        run: |
+          sh scripts/backup-db.sh
+          docker compose down -v
+          docker compose up -d --no-build --wait --wait-timeout 120
+          test "$(curl -fsS http://localhost:4200/api/organizations/stats)" = '{"total":0}'
+          sh scripts/restore-db.sh "$(ls -1 backups/orion-*.db | tail -n 1)"
+          test "$(curl -fsS http://localhost:4200/api/organizations/stats)" = '{"total":1}'
+          sh scripts/smoke-test.sh
+
       - name: Scan des vulnérabilités des images
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: |
