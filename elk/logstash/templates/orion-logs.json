@@ -36,6 +36,7 @@
             "path": { "type": "keyword" },
             "status_code": { "type": "integer" },
             "duration_ms": { "type": "float" },
+            "upstream_duration_ms": { "type": "float" },
             "response_bytes": { "type": "long" },
             "user_agent": { "type": "keyword" }
           }
