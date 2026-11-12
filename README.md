@@ -1,6 +1,6 @@
 # Orion CRM
 
-A simplified Customer Relationship Management (CRM) application built with the MERN stack (modernized with TypeScript, Vite, and Prisma).
+A simplified Customer Relationship Management (CRM) application built with React, Express, TypeScript, Vite, Prisma and SQLite.
 
 ## Architecture
 
@@ -20,14 +20,14 @@ This project follows a monorepo structure with separate frontend and backend app
 
 ```bash
 git clone <repository-url>
-cd p7-dfsjs
+cd Openclassrooms_P7
 ```
 
 ### 2. Install backend dependencies
 
 ```bash
 cd server
-npm install
+npm ci --ignore-scripts
 ```
 
 ### 3. Configure environment variables
@@ -41,15 +41,15 @@ Edit `.env` if needed (default values should work for local development).
 ### 4. Initialize the database
 
 ```bash
-npx prisma generate
-npx prisma migrate dev --name init
+npm run prisma:generate
+npm run prisma:deploy
 ```
 
 ### 5. Install frontend dependencies
 
 ```bash
 cd ../client
-npm install
+npm ci --ignore-scripts
 ```
 
 ### 6. Configure frontend environment
@@ -89,16 +89,16 @@ docker compose down -v
 
 ## CI/CD pipeline
 
-All automation lives in `.github/workflows/ci.yml`.
+`.github/workflows/ci.yml` checks, publishes and deploys every change; `.github/workflows/release.yml` creates the GitHub releases (see Releases).
 
 | Job | Runs on | What it does |
 |---|---|---|
 | Back-end | every run (Node 22, plus Node 24 nightly) | `npm ci`, `prisma generate`, lint, `tsc` build, Vitest with coverage |
 | Front-end | every run (Node 22, plus Node 24 nightly) | `npm ci`, lint, type check, Vitest with coverage, Vite build |
 | Dependency audit | every run | `npm audit --omit=dev --audit-level=high` for each app |
-| SonarQube Cloud | pull requests, `main`, release tags, nightly | static analysis and quality gate |
-| Docker images and smoke test | every run | builds both images, starts the stack, runs `scripts/smoke-test.sh`, checks data persistence, backup and restore; Grype image scan nightly |
-| Image publication | push to `main` or `v*.*.*` tag | pushes `ghcr.io/serime/orion-crm-{server,client}:sha-<commit>` |
+| SonarQube Cloud | pull requests, `main`, release tags, nightly, manual run | static analysis and quality gate |
+| Docker images and smoke test | every run | builds both images, starts the stack, runs `scripts/smoke-test.sh`, checks data persistence, backup and restore; Grype image scan nightly and on manual runs |
+| Image publication | push to `main` or `v*.*.*` tag | checks the tag format (release tags only), pushes `ghcr.io/serime/orion-crm-{server,client}:sha-<commit>` |
 | Validation deployment | after publication | pulls the published images, starts them, runs the smoke test, then promotes the tags (`main` and `latest`, or `X.Y.Z` and `X.Y` for a release) |
 
 Triggers: push on any branch, pull request to `main`, release tag `vX.Y.Z`, nightly at 02:23 UTC (GitHub may start scheduled runs later), manual run (`gh workflow run CI`).
@@ -111,12 +111,13 @@ Published images are public on GitHub Container Registry. To deploy or update a 
 
 ```bash
 export TAG=latest
+sh scripts/backup-db.sh
 docker compose pull
 docker compose up -d --no-build --wait
 sh scripts/smoke-test.sh
 ```
 
-Order: back up the database, pull the images, start the stack (the back-end applies the migrations and must be healthy before nginx starts), run the smoke test.
+Order: back up the database (skip this step on the first deployment), pull the images, start the stack (the back-end applies the migrations and must be healthy before nginx starts), run the smoke test.
 
 Rollback: run the same commands with the tag of the last stable version, for example `TAG=sha-3241247`. The database volume is kept across deployments; migrations are applied automatically at start-up. Going back before a migration requires restoring the backup taken before the deployment.
 
@@ -174,7 +175,7 @@ The front-end archive contains static files to serve with any web server that pr
 
 ## Monitoring with ELK
 
-A separate Compose file runs Elasticsearch, Logstash, Kibana (8.19) and Filebeat on a developer machine. It is not part of the CI/CD pipeline. Allow about 4 GB of memory for Docker.
+A separate Compose file runs Elasticsearch, Logstash, Kibana (8.19) and Filebeat on a developer machine. It is not part of the CI/CD pipeline. The containers are limited to 4.25 GB of memory in total.
 
 ```bash
 docker compose up -d
@@ -182,15 +183,15 @@ docker compose -f docker-compose-elk.yml up -d
 ```
 
 - Kibana: `http://localhost:5601`, dashboards **Orion CRM - Supervision** (application logs) and **Orion CRM - Pipeline et DORA** (DORA metrics and pipeline KPIs), imported automatically by the `kibana-setup` service
-- Elasticsearch: `http://localhost:9200`, indices `orion-logs-YYYY.MM.DD`
+- Elasticsearch: `http://localhost:9200`, indices `orion-logs-YYYY.MM.DD` (application logs), `orion-pipeline-*` (workflow runs and deployments) and `orion-quality-*` (SonarQube measures)
 - Both ports are bound to `127.0.0.1` only; security is disabled for local use.
 
 How logs flow:
 
 1. The back-end writes one JSON line per event with Winston (`http_request` with method, path, status and duration; `unhandled_error`; `client_log` for errors reported by the browser through `POST /api/client-logs`).
-2. nginx writes its access log as JSON (status, path, request time).
+2. nginx writes its access log as JSON (status, path, request time, back-end response time).
 3. Filebeat reads the Docker logs of the `orion-crm` containers and sends them to Logstash.
-4. Logstash parses the JSON, normalises the fields (`service`, `log.level`, `event.action`, `http.*`) and indexes them in Elasticsearch.
+4. Logstash parses the JSON, normalises the fields (`service`, `log.level`, `event.action`, `http.*`), masks the client address in nginx error lines and indexes them in Elasticsearch.
 5. A second Logstash pipeline polls the public GitHub API (workflow runs every 5 minutes, deployments) and SonarQube Cloud (every 30 minutes) to index pipeline durations, results, lead time, deployments and quality measures.
 
 ```bash
@@ -228,10 +229,12 @@ The application will be available at `http://localhost:4200`
 - `npm run dev` - Start development server with hot reload
 - `npm run build` - Build for production
 - `npm start` - Start production server
-- `npm test` - Run tests
+- `npm test` - Run tests in watch mode
+- `npm run test:coverage` - Run tests once with coverage (add `-- --run` outside CI)
 - `npm run lint` - Lint code
 - `npm run prisma:generate` - Generate Prisma client
-- `npm run prisma:migrate` - Run database migrations
+- `npm run prisma:migrate` - Create and apply a migration in development
+- `npm run prisma:deploy` - Apply the versioned migrations
 - `npm run prisma:studio` - Open Prisma Studio (database GUI)
 
 ### Frontend (client/)
@@ -239,23 +242,28 @@ The application will be available at `http://localhost:4200`
 - `npm run dev` - Start development server
 - `npm run build` - Build for production
 - `npm run preview` - Preview production build
-- `npm test` - Run tests
+- `npm run typecheck` - Check types (not done by the build)
+- `npm test` - Run tests in watch mode
+- `npm run test:coverage` - Run tests once with coverage (add `-- --run` outside CI)
 - `npm run lint` - Lint code
 
 ## Project Structure
 
 ```
-p7-dfsjs-starter/
-├── client/                 # Frontend React application
+Openclassrooms_P7/
+├── .github/
+│   ├── workflows/         # ci.yml and release.yml
+│   └── dependabot.yml
+├── client/                # Frontend React application
 │   ├── src/
 │   │   ├── components/    # Reusable React components
-│   │   ├── pages/         # Page components
+│   │   ├── pages/         # Page components and their tests
 │   │   ├── hooks/         # Custom React hooks
 │   │   ├── services/      # API client services
 │   │   ├── types/         # TypeScript type definitions
 │   │   ├── App.tsx        # Main App component
 │   │   └── main.tsx       # Application entry point
-│   ├── public/
+│   ├── nginx.conf         # Web server of the production image
 │   ├── index.html
 │   ├── package.json
 │   ├── vite.config.ts
@@ -265,14 +273,22 @@ p7-dfsjs-starter/
 │   │   ├── controllers/   # Route handlers (HTTP layer)
 │   │   ├── services/      # Business logic layer
 │   │   ├── repositories/  # Data access layer
+│   │   ├── middlewares/   # Request logging and error handling
 │   │   ├── models/        # Data models and schemas
 │   │   ├── routes/        # API route definitions
+│   │   ├── app.ts         # Express application
 │   │   └── index.ts       # Server entry point
 │   ├── prisma/
+│   │   ├── migrations/    # Versioned migrations
 │   │   └── schema.prisma  # Database schema
 │   ├── package.json
 │   ├── tsconfig.json
 │   └── Dockerfile
+├── elk/                   # Filebeat, Logstash and Kibana configuration
+├── scripts/               # smoke-test.sh, backup-db.sh, restore-db.sh
+├── docker-compose.yml
+├── docker-compose-elk.yml
+├── sonar-project.properties
 └── README.md
 ```
 
