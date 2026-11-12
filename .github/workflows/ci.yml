@@ -270,7 +270,21 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          fetch-depth: ${{ github.ref_type == 'tag' && 0 || 1 }}
           persist-credentials: false
+
+      - name: Vérifier le tag de version
+        if: github.ref_type == 'tag'
+        run: |
+          semver='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.(0|[1-9][0-9]*))?$'
+          if ! printf '%s' "$GITHUB_REF_NAME" | grep -Eq "$semver"; then
+            echo "::error::Le tag $GITHUB_REF_NAME ne respecte pas le format vMAJEUR.MINEUR.CORRECTIF ou vMAJEUR.MINEUR.CORRECTIF-rc.N"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Le tag $GITHUB_REF_NAME doit pointer sur un commit de la branche main"
+            exit 1
+          fi
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
 
