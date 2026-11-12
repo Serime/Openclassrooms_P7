@@ -37,3 +37,5 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      - dependency-name: nginx
+        versions: ["1.31.x"]
