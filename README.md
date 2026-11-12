@@ -101,7 +101,7 @@ All automation lives in `.github/workflows/ci.yml`.
 | Image publication | push to `main` or `v*.*.*` tag | pushes `ghcr.io/serime/orion-crm-{server,client}:sha-<commit>` |
 | Validation deployment | after publication | pulls the published images, starts them, runs the smoke test, then promotes the tags (`main` and `latest`, or `X.Y.Z` and `X.Y` for a release) |
 
-Triggers: push on any branch, pull request to `main`, release tag `vX.Y.Z`, nightly at 02:00 UTC, manual run (`gh workflow run CI`).
+Triggers: push on any branch, pull request to `main`, release tag `vX.Y.Z`, nightly at 02:23 UTC (GitHub may start scheduled runs later), manual run (`gh workflow run CI`).
 
 Secrets and variables: `SONAR_TOKEN` (repository secret), `SONAR_ORGANIZATION` and `SONAR_PROJECT_KEY` (repository variables). Image publication uses the built-in `GITHUB_TOKEN`.
 
