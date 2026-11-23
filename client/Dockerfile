@@ -7,7 +7,7 @@ COPY src ./src
 RUN npm run build \
  && find dist -name '*.map' -delete
 
-FROM nginx:1.30.6-alpine3.24@sha256:0e52bd054126cdc040b1276c0af347aeb02a41b9cfe305d6094767ac30e97949 AS runtime
+FROM nginx:1.31.8-alpine3.24@sha256:fed7e14be83cbd2661a75cdc5b872d936cf155d46c327084d30b8df19ae88d72 AS runtime
 RUN apk upgrade --no-cache \
  && apk del --no-cache curl
 ENV NGINX_ENTRYPOINT_QUIET_LOGS=1
